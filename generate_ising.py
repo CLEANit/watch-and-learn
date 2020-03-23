@@ -3,7 +3,8 @@ import h5py
 from tqdm import tqdm
 import jax.numpy as np
 
-from numpy import random
+from jax import random, jit
+from jax.ops import index, index_update
 from typing import Iterator, Tuple, List
 
 N = 8
@@ -24,9 +25,11 @@ def create_grid(n_x: int, n_y: int) -> np.array:
     :return: grid of size (n_x, n_y)
     :rtype: np.array
     """
-    return random.randint(2, size=(n_x, n_y))*2 - 1
+    key = random.PRNGKey(11)
+    return random.randint(key, (n_x, n_y), 0, 2)*2 - 1
 
 
+@jit
 def flip_spin(grid: np.array) -> np.array:
     """Flip the spin of a single element on the grid
 
@@ -36,10 +39,11 @@ def flip_spin(grid: np.array) -> np.array:
     :rtype: np.array
     """
     n_x, n_y = grid.shape
-    x = random.randint(0, n_x)
-    y = random.randint(0, n_y)
-    flipped_grid = grid.copy()
-    flipped_grid[x][y] *= -1
+    key = random.PRNGKey(11)
+    x = random.randint(key, (1, ), 0, n_x)
+    y = random.randint(key, (1, ), 0, n_y)
+    mask = index_update(np.ones_like(grid), index[x, y], -1)
+    flipped_grid = grid*mask
     return flipped_grid
 
 
@@ -96,7 +100,8 @@ def metropolis(grid_curr: np.array, H_curr: float, C: float, model: str) -> Tupl
     H_cand = H(grid_cand, model)
     dH = H_cand - H_curr
 
-    alpha = random.random()
+    key = random.PRNGKey(11)
+    alpha = random.uniform(key)
     if dH <= 0 or alpha < C**dH:
         H_curr = H_cand
         grid_curr = grid_cand
@@ -200,7 +205,7 @@ def h5gen(model="ISING1", div=32, runs=1, batch_size=1e5, filename='training_dat
     f = h5py.File(filename, "w")
     for i in tqdm(range(range(div))):
         if i % (div // runs) == 0:
-            grid_init = create_grid(N, N)
+            grid_init = jit(create_grid, static_argnums=(0, 1))(N, N)
             grids = metropolis_chain(grid_init, beta, model,
                                      n_iter=div_multiplier*div//runs, burn_in=110000)
 
