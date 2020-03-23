@@ -5,7 +5,9 @@ import jax.numpy as np
 
 from jax import random, jit
 from jax.ops import index, index_update
-from typing import Iterator, Tuple, List
+from typing import Iterator, Tuple, List, Callable
+
+import hamiltonians
 
 N = 8
 T = 4.0
@@ -29,16 +31,18 @@ def create_grid(n_x: int, n_y: int) -> np.array:
     return random.randint(key, (n_x, n_y), 0, 2)*2 - 1
 
 
-@jit
-def flip_spin(grid: np.array) -> np.array:
+def flip_spin(grid: np.array, n_x: int, n_y: int) -> np.array:
     """Flip the spin of a single element on the grid
 
     :param grid: grid with spins
     :type grid: np.array
+    :type n_x: int
+    :param n_y: grids's second dimension
+    :type n_y: int
     :return: grid with one flipped spin
     :rtype: np.array
     """
-    n_x, n_y = grid.shape
+
     key = random.PRNGKey(11)
     x = random.randint(key, (1, ), 0, n_x)
     y = random.randint(key, (1, ), 0, n_y)
@@ -47,57 +51,25 @@ def flip_spin(grid: np.array) -> np.array:
     return flipped_grid
 
 
-def H2(arr):
-    """Calculates a 2nd-nearest-neighbor hamiltonian for the ising model"""
-    # shift one to the right elements
-    x = np.roll(arr, 1, axis=1)
-    # shift elements one down
-    y = np.roll(arr, 1, axis=0)
-    # multiply original with transformations and sum each arr
-    w = np.roll(x, 1, axis=0)
-    # w and z are diaganol up and diaganol down
-    z = np.roll(x, -1, axis=0)
-    x = np.sum(np.multiply(arr, x))
-    y = np.sum(np.multiply(arr, y))
-    z = np.sum(np.multiply(arr, z))
-    w = np.sum(np.multiply(arr, w))
-    return -float(x+y) - float(z+w)/2
-
-
-def H(arr, model):
-    """Calculates a hamiltonian for ising (1st or 2nd nearest) or potts models"""
-    if model == "ISING2":
-        return H2(arr)
-    # shift one to the right elements
-    x = np.roll(arr, 1, axis=1)
-    # shift elements one down
-    y = np.roll(arr, 1, axis=0)
-    # multiply original with transformations and sum each arr
-
-    if model == "ISING1":
-        x = np.sum(np.multiply(arr, x))  # Ising
-        y = np.sum(np.multiply(arr, y))
-
-    return -float(x+y)
-
-
-def metropolis(grid_curr: np.array, H_curr: float, C: float, model: str) -> Tuple[np.array, float]:
+def metropolis(grid_curr: np.array, H_curr: float,
+               H: Callable[[np.array], np.float32], C: float) -> Tuple[np.array, float]:
     """Metropolis update rule when flipping a single spin
 
     :param grid_curr: current grid
     :type grid_curr: np.array
     :param H_curr: current hamiltonian
     :type H_curr: float
-    :param C: quantity to calculate transition probability
+    :param H: function to calculate Hamiltonian
+    :type H: Callable[[np.array], np.float32]
+    :param C: helper to calculate transition probability
     :type C: float
-    :param model: model being simulated
-    :type model: str
-    :return: updated grid and Hamiltonian using metropolis algorithm
+    :return: updated grid and Hamiltonian using Metropolis algorithm
     :rtype: Tuple[np.array, float]
     """
 
-    grid_cand = flip_spin(grid_curr)
-    H_cand = H(grid_cand, model)
+    n_x, n_y = grid_curr.shape
+    grid_cand = jit(flip_spin, static_argnums=(1, 2))(grid_curr, n_x, n_y)
+    H_cand = H(grid_cand)
     dH = H_cand - H_curr
 
     key = random.PRNGKey(11)
@@ -109,16 +81,16 @@ def metropolis(grid_curr: np.array, H_curr: float, C: float, model: str) -> Tupl
     return grid_curr, H_curr
 
 
-def metropolis_chain(grid_curr: np.array, beta: float,
-                     model: str, n_iter=0, burn_in=0) -> Iterator[np.array]:
+def metropolis_chain(grid_curr: np.array, beta: float, H: Callable[[np.array], np.float32],
+                     n_iter=0, burn_in=0) -> Iterator[np.array]:
     """Sample chain using Metropolis algorithm
 
     :param grid_curr: initial grid configuration
     :type grid_curr: np.array
     :param beta: inverse of Boltzmann's constant times the temperature
     :type beta: float
-    :param model: model being simulated
-    :type model: str
+    :param H: function to calculate Hamiltonian
+    :type H: Callable[[np.array], np.float32]
     :param n_iter: number of elements in chain, defaults to 0
     :type n_iter: int, optional
     :param burn_in: number of burn-in steps to help convergence, defaults to 0
@@ -128,13 +100,13 @@ def metropolis_chain(grid_curr: np.array, beta: float,
     """
 
     C = np.exp(-beta)
-    H_curr = H(grid_curr, model)
+    H_curr = H(grid_curr)
 
     for i in range(burn_in):
-        grid_curr, H_curr = metropolis(grid_curr, H_curr, C, model)
+        grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C)
 
     for i in range(n_iter):
-        grid_curr, H_curr = metropolis(grid_curr, H_curr, C, model)
+        grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C)
         yield grid_curr
 
 
@@ -202,11 +174,18 @@ def h5gen(model="ISING1", div=32, runs=1, batch_size=1e5, filename='training_dat
     div_multiplier = batch_size
     length = div_multiplier*div
 
+    if model == "ISING1":
+        H = hamiltonians.H_ising_1
+    elif model == "ISING2":
+        H = hamiltonians.H_ising_2
+    elif model == "POTTS1":
+        H = hamiltonians.H_potts_1
+
     f = h5py.File(filename, "w")
     for i in tqdm(range(range(div))):
         if i % (div // runs) == 0:
             grid_init = jit(create_grid, static_argnums=(0, 1))(N, N)
-            grids = metropolis_chain(grid_init, beta, model,
+            grids = metropolis_chain(grid_init, beta, H,
                                      n_iter=div_multiplier*div//runs, burn_in=110000)
 
         batch = [next(grids) for i in range(batch_size)]
