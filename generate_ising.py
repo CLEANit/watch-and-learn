@@ -7,7 +7,7 @@ import numpy as onp
 
 from jax import random, jit
 from jax.ops import index, index_update
-from typing import Iterator, Tuple, Callable
+from typing import Tuple, Callable
 
 import hamiltonians
 
@@ -76,11 +76,8 @@ def create_grid(n_x: int, n_y: int) -> np.array:
     """Create a grid randomly filled with -1 and +1
 
     :param n_x: grid's first dimension
-    :type n_x: int
     :param n_y: grids's second dimension
-    :type n_y: int
     :return: grid of size (n_x, n_y)
-    :rtype: np.array
     """
     key = random.PRNGKey(11)
     return random.randint(key, (n_x, n_y), 0, 2)*2 - 1
@@ -90,12 +87,9 @@ def flip_spin(grid: np.array, n_x: int, n_y: int) -> np.array:
     """Flip the spin of a single element on the grid
 
     :param grid: grid with spins
-    :type grid: np.array
-    :type n_x: int
+    :param n_x: grid's first dimension
     :param n_y: grids's second dimension
-    :type n_y: int
     :return: grid with one flipped spin
-    :rtype: np.array
     """
 
     key = random.PRNGKey(11)
@@ -111,15 +105,10 @@ def metropolis(grid_curr: np.array, H_curr: float,
     """Metropolis update rule when flipping a single spin
 
     :param grid_curr: current grid
-    :type grid_curr: np.array
     :param H_curr: current hamiltonian
-    :type H_curr: float
     :param H: function to calculate Hamiltonian
-    :type H: Callable[[np.array], np.float32]
     :param C: helper to calculate transition probability
-    :type C: float
-    :return: updated grid and Hamiltonian using Metropolis algorithm
-    :rtype: Tuple[np.array, float]
+    :return: updated grid and Hamiltonian using Metropolis update rule
     """
 
     n_x, n_y = grid_curr.shape
@@ -137,21 +126,15 @@ def metropolis(grid_curr: np.array, H_curr: float,
 
 
 def metropolis_chain(grid_curr: np.array, beta: float, H: Callable[[np.array], np.float32],
-                     n_iter: int, burn_in: int) -> Iterator[np.array]:
+                     n_iter: int, burn_in: int) -> np.array:
     """Sample chain using Metropolis algorithm
 
     :param grid_curr: initial grid configuration
-    :type grid_curr: np.array
     :param beta: inverse of Boltzmann's constant times the temperature
-    :type beta: float
     :param H: function to calculate Hamiltonian
-    :type H: Callable[[np.array], np.float32]
-    :param n_iter: number of elements in chain, defaults to 0
-    :type n_iter: int, optional
-    :param burn_in: number of burn-in steps to help convergence, defaults to 0
-    :type burn_in: int, optional
-    :yield: chain of sampled states
-    :rtype: Iterator[np.array]
+    :param n_iter: number of elements in chain
+    :param burn_in: number of samples to discard in the begining of MC process
+    :return: chain of sampled states
     """
 
     C = np.exp(-beta)
@@ -171,7 +154,18 @@ def metropolis_chain(grid_curr: np.array, beta: float, H: Callable[[np.array], n
     return grids
 
 
-def h5gen(beta, n_x, n_y, model, n_samples, burn_in, filename) -> None:
+def h5gen(beta: float, n_x: int, n_y: int, model: str,
+          n_samples: int, burn_in: int, filename: str) -> None:
+    """Generate hdf5 file with generated samples
+
+    :param beta: inverse of Boltzmann's constant times the temperature
+    :param n_x: grid's first dimension size
+    :param n_y: grid's second dimension size
+    :param model: type of model to simulate
+    :param n_samples: number of samples to generate
+    :param burn_in: number of samples to discard in the begining of MC process
+    :param filename: path and filename to write generated samples
+    """
 
     if model == "ISING1":
         H = hamiltonians.H_ising_1
