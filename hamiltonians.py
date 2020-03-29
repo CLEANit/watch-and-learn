@@ -39,7 +39,3 @@ def H_ising_1(grid: np.array) -> np.float32:
     x = np.sum(np.multiply(grid, x))  # Ising
     y = np.sum(np.multiply(grid, y))
     return -(x+y).astype(np.float32)
-
-
-def H_potts_1(grid: np.array) -> np.float32:
-    raise NotImplementedError

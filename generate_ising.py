@@ -2,10 +2,11 @@ import sys
 import h5py
 from tqdm import tqdm
 import jax.numpy as np
+import numpy as onp
 
 from jax import random, jit
 from jax.ops import index, index_update
-from typing import Iterator, Tuple, List, Callable
+from typing import Iterator, Tuple, Callable
 
 import hamiltonians
 
@@ -101,111 +102,38 @@ def metropolis_chain(grid_curr: np.array, beta: float, H: Callable[[np.array], n
 
     C = np.exp(-beta)
     H_curr = H(grid_curr)
+    n_x, n_y = grid_curr.shape
+    grids = onp.zeros((n_iter, n_x, n_y))
 
-    for i in range(burn_in):
+    print(f"\nGenerating {burn_in} samples")
+    for i in tqdm(range(burn_in)):
         grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C)
 
-    for i in range(n_iter):
+    print(f"\nGenerating {n_iter} MC samples")
+    for i in tqdm(range(n_iter)):
         grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C)
-        yield grid_curr
+        grids[i] = np.asarray(grid_curr, dtype=onp.int8)
+
+    return grids
 
 
-def snake(arr: np.array) -> List[float]:
-    """Flatten 2D array using a snake pattern
-
-    :param arr: array to be flattened
-    :type arr: np.array
-    :return: flattened array
-    :rtype: List[float]
-    """
-    snake_ = []
-    n = 1
-    for a in arr:
-        snake_ += a[::n]
-        n *= -1
-    return snake_
-
-
-def spiral(arr: np.array) -> List[float]:
-    """Flatten 2D array using a spiral pattern
-
-    :param arr: array to be flattened
-    :type arr: np.array
-    :return: flattened array
-    :rtype: List[float]
-    """
-
-    i = j = len(arr)//2
-    k = -1
-    spiral_ = [arr[i][j]]
-    for s in range(1, len(arr)):
-        for sy in range(s):
-            i += k
-            spiral_ += [arr[i][j]]
-        for sx in range(s):
-            j += k
-            spiral_ += [arr[i][j]]
-        k *= -1
-    for sx in range(len(arr)-1):
-        i += k
-        spiral_ += [arr[i][j]]
-    return spiral_
-
-
-def flatten(grid: np.array, flatten_pattern: str) -> List[float]:
-    """Flatten 2D grid in a certain pattern
-
-    :param grid: grid to be flattened
-    :type grid: np.array
-    :param flatten_pattern: used pattern when flattening grid
-    :type flatten_patter: str
-    :return: flattened grid
-    :rtype: List[float]
-    """
-
-    if flatten_pattern == "SPIRAL":
-        return spiral(grid)
-    else:
-        return snake(grid)
-
-
-def h5gen(model="ISING1", div=32, runs=1, batch_size=1e5, filename='training_data.hdf5'):
-    assert runs*(div//runs) == div
-    div_multiplier = batch_size
-    length = div_multiplier*div
+def h5gen(model="ISING1", n_samples=3200000,
+          burn_in=110000, filename='training_data.hdf5') -> None:
 
     if model == "ISING1":
         H = hamiltonians.H_ising_1
     elif model == "ISING2":
         H = hamiltonians.H_ising_2
-    elif model == "POTTS1":
-        H = hamiltonians.H_potts_1
 
-    f = h5py.File(filename, "w")
-    for i in tqdm(range(range(div))):
-        if i % (div // runs) == 0:
-            grid_init = jit(create_grid, static_argnums=(0, 1))(N, N)
-            grids = metropolis_chain(grid_init, beta, H,
-                                     n_iter=div_multiplier*div//runs, burn_in=110000)
-
-        batch = [next(grids) for i in range(batch_size)]
-
-        out = [[[n] for n in flatten(grid, flatten_pattern)] for grid in batch]
-
-        in_ = np.asarray([arr[:-1] for arr in out], dtype=np.int8)
-        out = np.asarray([arr[1:] for arr in out], dtype=np.int8)
-        if i == 0:
-            f.create_dataset("Inputs", data=in_, chunks=True, maxshape=(length, N**2-1, 1))
-            f.create_dataset("Labels", data=out, chunks=True, maxshape=(length, N**2-1, 1))
-            f.close()
-            f = h5py.File(filename, "a")
-        else:
-            f["Inputs"].resize((f["Inputs"].shape[0] + length // div), axis=0)
-            f["Inputs"][-length // div:] = in_
-            f["Labels"].resize((f["Labels"].shape[0] + length // div), axis=0)
-            f["Labels"][-length // div:] = out
-        print((i+1)/div*100, end="% ")
-        sys.stdout.flush()
-    f.close()
+    grid_init = jit(create_grid, static_argnums=(0, 1))(N, N)
+    grids = metropolis_chain(grid_init, beta, H, n_iter=n_samples, burn_in=burn_in)
     print('Generation of MC data is complete')
-    f.close()
+
+    with h5py.File(filename, "w") as f:
+        f.create_dataset("ising_grids", data=grids, chunks=True)
+    sys.stdout.flush()
+
+
+if __name__ == "__main__":
+
+    h5gen(n_samples=3200, burn_in=1100)
