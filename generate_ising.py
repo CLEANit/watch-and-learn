@@ -1,4 +1,5 @@
 import sys
+import argparse
 import h5py
 from tqdm import tqdm
 import jax.numpy as np
@@ -10,12 +11,65 @@ from typing import Iterator, Tuple, Callable
 
 import hamiltonians
 
-N = 8
-T = 4.0
-kb = 1.0
-beta = 1/(kb*T)
-Q = 2
-flatten_pattern = "SPIRAL"
+parser = argparse.ArgumentParser(description="Generate MC samples for Ising model")
+
+parser.add_argument(
+    "--n_x",
+    type=int,
+    help="Size of first axis of the grid",
+    default=8
+)
+
+parser.add_argument(
+    "--n_y",
+    type=int,
+    help="Size of second axis of the grid",
+    default=8
+)
+
+parser.add_argument(
+    "-T",
+    "--temperature",
+    type=float,
+    help="Temperature of the system",
+    default=4.0
+)
+
+parser.add_argument(
+    "--kb",
+    type=float,
+    help="Value for Boltzmann's constant",
+    default=1.0
+)
+
+parser.add_argument(
+    "--model",
+    choices={"ISING1", "ISING2"},
+    help="Simulate first or second order Ising model",
+    default="ISING1"
+)
+
+
+parser.add_argument(
+    "--n_samples",
+    type=int,
+    help="Number of MC samples to generate",
+    default=3200000
+)
+
+parser.add_argument(
+    "--burn_in",
+    type=int,
+    help="Number of samples to discard in MC process",
+    default=110000
+)
+
+parser.add_argument(
+    "--filename",
+    type=str,
+    help="Path and filename to write generated samples",
+    default='training_data.hdf5'
+)
 
 
 def create_grid(n_x: int, n_y: int) -> np.array:
@@ -83,7 +137,7 @@ def metropolis(grid_curr: np.array, H_curr: float,
 
 
 def metropolis_chain(grid_curr: np.array, beta: float, H: Callable[[np.array], np.float32],
-                     n_iter=0, burn_in=0) -> Iterator[np.array]:
+                     n_iter: int, burn_in: int) -> Iterator[np.array]:
     """Sample chain using Metropolis algorithm
 
     :param grid_curr: initial grid configuration
@@ -117,15 +171,14 @@ def metropolis_chain(grid_curr: np.array, beta: float, H: Callable[[np.array], n
     return grids
 
 
-def h5gen(model="ISING1", n_samples=3200000,
-          burn_in=110000, filename='training_data.hdf5') -> None:
+def h5gen(beta, n_x, n_y, model, n_samples, burn_in, filename) -> None:
 
     if model == "ISING1":
         H = hamiltonians.H_ising_1
     elif model == "ISING2":
         H = hamiltonians.H_ising_2
 
-    grid_init = jit(create_grid, static_argnums=(0, 1))(N, N)
+    grid_init = jit(create_grid, static_argnums=(0, 1))(n_x, n_y)
     grids = metropolis_chain(grid_init, beta, H, n_iter=n_samples, burn_in=burn_in)
     print('Generation of MC data is complete')
 
@@ -136,4 +189,9 @@ def h5gen(model="ISING1", n_samples=3200000,
 
 if __name__ == "__main__":
 
-    h5gen(n_samples=3200, burn_in=1100)
+    args = parser.parse_args()
+
+    beta = 1/(args.temperature*args.kb)
+
+    h5gen(beta=beta, n_x=args.n_x, n_y=args.n_y, model=args.model,
+          n_samples=args.n_samples, burn_in=args.burn_in, filename=args.filename)
