@@ -53,4 +53,4 @@ class IsingDataset(Dataset):
         for i, row in enumerate(arr):
             snake_ += list(row[::k])
             k *= -1
-        return torch.tensor(snake_)
+        return torch.tensor(snake_).unsqueeze(-1)
