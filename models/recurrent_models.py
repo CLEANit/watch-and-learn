@@ -9,10 +9,10 @@ from data_utils.pytorch_datasets import IsingDataset
 
 class EnergyGRU(pl.LightningModule):
 
-    def __init__(self, input_size: int, hidden_size: int, output_size: int,
+    def __init__(self, input_size: int, hidden_size: int, output_size: int, num_layers: int,
                  train_datapath: str, val_datapath: str, test_datapath: str):
         super(EnergyGRU, self).__init__()
-        self.gru = nn.GRU(input_size, hidden_size, batch_first=True)
+        self.gru = nn.GRU(input_size, hidden_size, num_layers=num_layers, batch_first=True)
         self.linear = nn.Linear(hidden_size, output_size)
         self.train_datapath = train_datapath
         self.val_datapath = val_datapath
