@@ -27,7 +27,7 @@ class EnergyGRU(pl.LightningModule):
     def training_step(self, batch, batch_nb):
         x, y = batch
         y_hat = self(x)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.BCEWithLogitsLoss()
         loss = loss_fn(y_hat, y)
         tensorboard_logs = {'train_loss': loss}
         return {'loss': loss, 'log': tensorboard_logs}
@@ -35,7 +35,7 @@ class EnergyGRU(pl.LightningModule):
     def validation_step(self, batch, batch_nb):
         x, y = batch
         y_hat = self(x)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.BCEWithLogitsLoss()
         return {'val_loss': loss_fn(y_hat, y)}
 
     def validation_epoch_end(self, outputs):
@@ -48,7 +48,7 @@ class EnergyGRU(pl.LightningModule):
         # OPTIONAL
         x, y = batch
         y_hat = self(x)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.BCEWithLogitsLoss()
         return {'test_loss': loss_fn(y_hat, y)}
 
     def test_epoch_end(self, outputs):

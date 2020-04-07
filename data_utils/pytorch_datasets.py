@@ -21,7 +21,7 @@ class IsingDataset(Dataset):
         flattened_sample = self.flatten(sample)
 
         X = flattened_sample[:-1]
-        y = flattened_sample[1:]
+        y = (flattened_sample[1:] == 1).float()
 
         return X, y
 
