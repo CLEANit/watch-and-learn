@@ -9,14 +9,17 @@ from data_utils.pytorch_datasets import IsingDataset
 
 class EnergyGRU(pl.LightningModule):
 
-    def __init__(self, input_size: int, hidden_size: int, output_size: int, num_layers: int,
-                 train_datapath: str, val_datapath: str, test_datapath: str):
+    def __init__(self, hparams):
         super(EnergyGRU, self).__init__()
-        self.gru = nn.GRU(input_size, hidden_size, num_layers=num_layers, batch_first=True)
-        self.linear = nn.Linear(hidden_size, output_size)
-        self.train_datapath = train_datapath
-        self.val_datapath = val_datapath
-        self.test_datapath = test_datapath
+        self.gru = nn.GRU(hparams.input_size, hparams.hidden_size,
+                          num_layers=hparams.num_layers, batch_first=True)
+        self.linear = nn.Linear(hparams.hidden_size, hparams.output_size)
+        self.train_datapath = hparams.train_datapath
+        self.val_datapath = hparams.val_datapath
+        self.test_datapath = hparams.test_datapath
+        self.lr = hparams.lr
+        self.batch_size = hparams.batch_size
+        self.num_workers = hparams.num_workers
 
     def forward(self, x):
         x, _ = self.gru(x)
@@ -58,25 +61,23 @@ class EnergyGRU(pl.LightningModule):
         return {'avg_test_loss': avg_loss, 'log': logs, 'progress_bar': logs}
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=0.0005)
+        return torch.optim.Adam(self.parameters(), lr=self.lr)
 
     def train_dataloader(self):
-        params = {'batch_size': 64,
-                  'shuffle': True,
-                  'num_workers': 4}
 
         ising_dataset = IsingDataset(filepath=self.train_datapath, data_key='ising_grids')
 
-        return DataLoader(ising_dataset, **params)
+        return DataLoader(ising_dataset, batch_size=self.batch_size,
+                          num_workers=self.num_workers, shuffle=True)
 
     def val_dataloader(self):
 
         ising_dataset = IsingDataset(filepath=self.val_datapath, data_key='ising_grids')
 
-        return DataLoader(ising_dataset, batch_size=1024)
+        return DataLoader(ising_dataset, batch_size=self.batch_size)
 
     def test_dataloader(self):
 
         ising_dataset = IsingDataset(filepath=self.test_datapath, data_key='ising_grids')
 
-        return DataLoader(ising_dataset, batch_size=1024)
+        return DataLoader(ising_dataset, batch_size=self.batch_size)
