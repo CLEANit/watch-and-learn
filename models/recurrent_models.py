@@ -32,33 +32,31 @@ class EnergyGRU(pl.LightningModule):
         y_hat = self(x)
         loss_fn = nn.BCEWithLogitsLoss()
         loss = loss_fn(y_hat, y)
-        tensorboard_logs = {'train_loss': loss}
-        return {'loss': loss, 'log': tensorboard_logs}
+        self.logger.experiment.add_scalar('train_loss', loss, self.trainer.global_step)
+        return {'loss': loss}
 
     def validation_step(self, batch, batch_nb):
         x, y = batch
         y_hat = self(x)
         loss_fn = nn.BCEWithLogitsLoss()
-        return {'val_loss': loss_fn(y_hat, y)}
+        loss = loss_fn(y_hat, y)
+        return {'val_loss': loss}
 
     def validation_epoch_end(self, outputs):
-        # OPTIONAL
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
-        tensorboard_logs = {'val_loss': avg_loss}
-        return {'avg_val_loss': avg_loss, 'log': tensorboard_logs}
+        self.logger.experiment.add_scalar('val_loss', avg_loss, self.trainer.global_step)
+        return {'avg_val_loss': avg_loss}
 
     def test_step(self, batch, batch_nb):
-        # OPTIONAL
         x, y = batch
         y_hat = self(x)
         loss_fn = nn.BCEWithLogitsLoss()
         return {'test_loss': loss_fn(y_hat, y)}
 
     def test_epoch_end(self, outputs):
-        # OPTIONAL
         avg_loss = torch.stack([x['test_loss'] for x in outputs]).mean()
-        logs = {'test_loss': avg_loss}
-        return {'avg_test_loss': avg_loss, 'log': logs, 'progress_bar': logs}
+        self.logger.experiment.add_scalar('test_loss', avg_loss, self.trainer.global_step)
+        return {'avg_test_loss': avg_loss}
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
