@@ -187,11 +187,15 @@ def h5gen(beta: float, n_x: int, n_y: int, model: str,
     grid_init = jit(create_grid, static_argnums=(0, 1))(n_x, n_y, random_seed)
     grids = metropolis_chain(grid_init, beta, H, n_iter=n_samples,
                              burn_in=burn_in, random_seed=random_seed)
+    energies = [H(grid) for grid in grids]
+    avg_E = np.average(energies)
     print('Generation of MC data is complete')
 
     with h5py.File(filename, "w") as f:
         f.create_dataset("ising_grids", data=grids, chunks=True)
+        f.create_dataset("true_energies", data=energies, chunks=True)
         f.create_dataset("beta", data=np.array([beta]))
+        f.create_dataset("avg_E", data=np.array([avg_E]))
     sys.stdout.flush()
 
 
