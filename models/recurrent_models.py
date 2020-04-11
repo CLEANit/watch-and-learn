@@ -21,6 +21,7 @@ class ProbabilityGRU(pl.LightningModule):
         self.batch_size = hparams.batch_size
         self.num_workers = hparams.num_workers
         self.beta = IsingDataset(filepath=self.train_datapath, data_key='beta').data
+        self.avg_E = IsingDataset(filepath=self.train_datapath, data_key='avg_E').data
 
     def forward(self, x):
         x, _ = self.gru(x)
@@ -80,3 +81,22 @@ class ProbabilityGRU(pl.LightningModule):
         ising_dataset = IsingDataset(filepath=self.test_datapath, data_key='ising_grids')
 
         return DataLoader(ising_dataset, batch_size=self.batch_size)
+
+    def calculate_probability(self, x, y):
+
+        down_state_mask = (x == 0.)
+        up_state_mask = (x == 1.)
+
+        true_probs = torch.zeros_like(y)
+        true_probs += (y*up_state_mask)
+        true_probs += (down_state_mask.int() - y*down_state_mask)
+
+        return torch.prod(true_probs)
+
+    def predict_energy(self, x):
+
+        y_hat = self(x)
+        prob = self.calculate_probability(x, y_hat)
+        H = (-1/self.beta)*(torch.log(prob))
+
+        return H
