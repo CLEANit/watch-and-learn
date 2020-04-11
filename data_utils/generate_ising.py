@@ -160,18 +160,15 @@ def metropolis_chain(grid_curr: np.DeviceArray, beta: float,
     grids = onp.zeros((n_iter, n_x, n_y))
 
     key = random.PRNGKey(random_seed)
-    key, *subkeys = random.split(key, num=(n_iter + burn_in)*3 + 1)
-    subkeys = np.array(subkeys).reshape(-1, 3, 2)
-
-    burn_in_subkeys = subkeys[:burn_in]
-    iter_subkeys = subkeys[burn_in:]
 
     print(f"\nGenerating {burn_in} burn-in samples")
-    for i_subkeys in tqdm(burn_in_subkeys, total=burn_in):
+    for i in tqdm(range(burn_in)):
+        key, *i_subkeys = random.split(key, num=4)
         grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C, *i_subkeys)
 
     print(f"\nGenerating {n_iter} MC samples")
-    for i, (i_subkeys) in tqdm(enumerate(iter_subkeys), total=n_iter):
+    for i in tqdm(range(n_iter)):
+        key, *i_subkeys = random.split(key, num=4)
         grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C, *i_subkeys)
         grids[i] = np.asarray(grid_curr, dtype=onp.int8)
 
