@@ -91,44 +91,48 @@ def create_grid(n_x: int, n_y: int, random_seed: int) -> np.array:
     return random.randint(key, (n_x, n_y), 0, 2)*2 - 1
 
 
-def flip_spin(grid: np.array, n_x: int, n_y: int, random_seed: int) -> np.array:
+def flip_spin(grid: np.array, n_x: int, n_y: int, x_subkey: np.DeviceArray,
+              y_subkey: np.DeviceArray) -> np.array:
     """Flip the spin of a single element on the grid
 
     :param grid: grid with spins
     :param n_x: grid's first dimension
     :param n_y: grids's second dimension
-    :param random_seed: seed for random functions
+    :param xflip_subkey: subkey for random x coordinate in flip
+    :param yflip_subkey: subkey for random y coordinate in flip
     :return: grid with one flipped spin
     """
 
-    key = random.PRNGKey(random_seed)
-    x = random.randint(key, (1, ), 0, n_x)
-    y = random.randint(key, (1, ), 0, n_y)
+    x = random.randint(x_subkey, (1, ), 0, n_x)
+    y = random.randint(y_subkey, (1, ), 0, n_y)
     mask = index_update(np.ones_like(grid), index[x, y], -1)
     flipped_grid = grid*mask
     return flipped_grid
 
 
-def metropolis(grid_curr: np.array, H_curr: float,
-               H: Callable[[np.array], np.float32],
-               C: float, random_seed: int) -> Tuple[np.array, float]:
+def metropolis(grid_curr: np.array, H_curr: float, H: Callable[[np.array], np.float32],
+               C: float, xflip_subkey: np.DeviceArray, yflip_subkey: np.DeviceArray,
+               metropolis_subkey: np.DeviceArray) -> Tuple[np.array, float]:
     """Metropolis update rule when flipping a single spin
 
     :param grid_curr: current grid
     :param H_curr: current hamiltonian
     :param H: function to calculate Hamiltonian
     :param C: helper to calculate transition probability
-    :param random_seed: seed for random functions
+    :param xflip_subkey: subkey for random x coordinate in flip
+    :param yflip_subkey: subkey for random y coordinate in flip
+    :param metropolis_subkey: subkey for random alpha in metropolis update
     :return: updated grid and Hamiltonian using Metropolis update rule
     """
 
     n_x, n_y = grid_curr.shape
-    grid_cand = jit(flip_spin, static_argnums=(1, 2))(grid_curr, n_x, n_y, random_seed)
+
+    grid_cand = jit(flip_spin, static_argnums=(1, 2))(grid_curr, n_x, n_y,
+                                                      xflip_subkey, yflip_subkey)
     H_cand = H(grid_cand)
     dH = H_cand - H_curr
 
-    key = random.PRNGKey(11)
-    alpha = random.uniform(key)
+    alpha = random.uniform(metropolis_subkey)
     if dH <= 0 or alpha < C**dH:
         H_curr = H_cand
         grid_curr = grid_cand
@@ -154,13 +158,20 @@ def metropolis_chain(grid_curr: np.array, beta: float, H: Callable[[np.array], n
     n_x, n_y = grid_curr.shape
     grids = onp.zeros((n_iter, n_x, n_y))
 
+    key = random.PRNGKey(random_seed)
+    key, *subkeys = random.split(key, num=(n_iter + burn_in)*3 + 1)
+    subkeys = np.array(subkeys).reshape(-1, 3, 2)
+
+    burn_in_subkeys = subkeys[:burn_in]
+    iter_subkeys = subkeys[burn_in:]
+
     print(f"\nGenerating {burn_in} burn-in samples")
-    for i in tqdm(range(burn_in)):
-        grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C, random_seed)
+    for i_subkeys in tqdm(burn_in_subkeys, total=burn_in):
+        grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C, *i_subkeys)
 
     print(f"\nGenerating {n_iter} MC samples")
-    for i in tqdm(range(n_iter)):
-        grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C, random_seed)
+    for i, (i_subkeys) in tqdm(enumerate(iter_subkeys), total=n_iter):
+        grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C, *i_subkeys)
         grids[i] = np.asarray(grid_curr, dtype=onp.int8)
 
     return grids
@@ -187,7 +198,7 @@ def h5gen(beta: float, n_x: int, n_y: int, model: str,
     grid_init = jit(create_grid, static_argnums=(0, 1))(n_x, n_y, random_seed)
     grids = metropolis_chain(grid_init, beta, H, n_iter=n_samples,
                              burn_in=burn_in, random_seed=random_seed)
-   
+
     print("Calculating grid energies")
     energies = vmap(H)(grids)
     avg_E = np.average(energies)
