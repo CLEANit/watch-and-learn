@@ -5,7 +5,7 @@ from tqdm import tqdm
 import jax.numpy as np
 import numpy as onp
 
-from jax import random, jit
+from jax import random, jit, vmap
 from jax.ops import index, index_update
 from typing import Tuple, Callable
 
@@ -187,7 +187,9 @@ def h5gen(beta: float, n_x: int, n_y: int, model: str,
     grid_init = jit(create_grid, static_argnums=(0, 1))(n_x, n_y, random_seed)
     grids = metropolis_chain(grid_init, beta, H, n_iter=n_samples,
                              burn_in=burn_in, random_seed=random_seed)
-    energies = [H(grid) for grid in grids]
+   
+    print("Calculating grid energies")
+    energies = vmap(H)(grids)
     avg_E = np.average(energies)
     print('Generation of MC data is complete')
 
