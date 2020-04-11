@@ -79,7 +79,7 @@ parser.add_argument(
 )
 
 
-def create_grid(n_x: int, n_y: int, random_seed: int) -> np.array:
+def create_grid(n_x: int, n_y: int, random_seed: int) -> np.DeviceArray:
     """Create a grid randomly filled with -1 and +1
 
     :param n_x: grid's first dimension
@@ -91,8 +91,8 @@ def create_grid(n_x: int, n_y: int, random_seed: int) -> np.array:
     return random.randint(key, (n_x, n_y), 0, 2)*2 - 1
 
 
-def flip_spin(grid: np.array, n_x: int, n_y: int, x_subkey: np.DeviceArray,
-              y_subkey: np.DeviceArray) -> np.array:
+def flip_spin(grid: np.DeviceArray, n_x: int, n_y: int, x_subkey: np.DeviceArray,
+              y_subkey: np.DeviceArray) -> np.DeviceArray:
     """Flip the spin of a single element on the grid
 
     :param grid: grid with spins
@@ -110,9 +110,9 @@ def flip_spin(grid: np.array, n_x: int, n_y: int, x_subkey: np.DeviceArray,
     return flipped_grid
 
 
-def metropolis(grid_curr: np.array, H_curr: float, H: Callable[[np.array], np.float32],
+def metropolis(grid_curr: np.DeviceArray, H_curr: float, H: Callable[[np.DeviceArray], np.float32],
                C: float, xflip_subkey: np.DeviceArray, yflip_subkey: np.DeviceArray,
-               metropolis_subkey: np.DeviceArray) -> Tuple[np.array, float]:
+               metropolis_subkey: np.DeviceArray) -> Tuple[np.DeviceArray, float]:
     """Metropolis update rule when flipping a single spin
 
     :param grid_curr: current grid
@@ -140,8 +140,9 @@ def metropolis(grid_curr: np.array, H_curr: float, H: Callable[[np.array], np.fl
     return grid_curr, H_curr
 
 
-def metropolis_chain(grid_curr: np.array, beta: float, H: Callable[[np.array], np.float32],
-                     n_iter: int, burn_in: int, random_seed: int) -> np.array:
+def metropolis_chain(grid_curr: np.DeviceArray, beta: float,
+                     H: Callable[[np.DeviceArray], np.float32],
+                     n_iter: int, burn_in: int, random_seed: int) -> np.DeviceArray:
     """Sample chain using Metropolis algorithm
 
     :param grid_curr: initial grid configuration
