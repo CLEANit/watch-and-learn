@@ -191,6 +191,7 @@ def h5gen(beta: float, n_x: int, n_y: int, model: str,
 
     with h5py.File(filename, "w") as f:
         f.create_dataset("ising_grids", data=grids, chunks=True)
+        f.create_dataset("beta", data=np.array([beta]))
     sys.stdout.flush()
 
 
