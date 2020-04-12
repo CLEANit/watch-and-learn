@@ -38,6 +38,7 @@ class ProbabilityGRU(pl.LightningModule):
         return {'loss': loss}
 
     def validation_step(self, batch, batch_nb):
+        # TODO: Implement metric for energy
         x, y = batch
         y_hat = self(x)
         loss_fn = nn.BCEWithLogitsLoss()
@@ -45,6 +46,7 @@ class ProbabilityGRU(pl.LightningModule):
         return {'val_loss': loss}
 
     def validation_epoch_end(self, outputs):
+        # TODO: Implement logger for energy difference
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         self.logger.experiment.add_scalar('val_loss', avg_loss, self.trainer.global_step)
         return {'avg_val_loss': avg_loss}
@@ -84,19 +86,19 @@ class ProbabilityGRU(pl.LightningModule):
 
     def calculate_probability(self, x, y):
 
-        down_state_mask = (x == 0.)
+        down_state_mask = (x == -1.)
         up_state_mask = (x == 1.)
 
         true_probs = torch.zeros_like(y)
         true_probs += (y*up_state_mask)
         true_probs += (down_state_mask.int() - y*down_state_mask)
 
-        return torch.prod(true_probs)
+        return torch.prod(true_probs, axis=1)
 
     def predict_energy(self, x):
 
-        y_hat = self(x)
+        y_hat = torch.sigmoid(self(x))
         prob = self.calculate_probability(x, y_hat)
-        H = (-1/self.beta)*(torch.log(prob))
+        H = (-1/torch.tensor(self.beta))*(torch.log(prob))
 
         return H
