@@ -7,12 +7,16 @@ import pytorch_lightning as pl
 from data_utils.pytorch_datasets import IsingDataset
 
 
-class ProbabilityGRU(pl.LightningModule):
+class ProbabilityRNN(pl.LightningModule):
 
     def __init__(self, hparams):
-        super(ProbabilityGRU, self).__init__()
-        self.gru = nn.GRU(hparams.input_size, hparams.hidden_size,
-                          num_layers=hparams.num_layers, batch_first=True)
+        super(ProbabilityRNN, self).__init__()
+        if hparams.lstm:
+            self.rnn = nn.LSTM(hparams.input_size, hparams.hidden_size,
+                              num_layers=hparams.num_layers, batch_first=True)
+        else:
+            self.rnn = nn.GRU(hparams.input_size, hparams.hidden_size,
+                              num_layers=hparams.num_layers, batch_first=True)
         self.linear = nn.Linear(hparams.hidden_size, hparams.output_size)
         self.train_datapath = hparams.train_datapath
         self.val_datapath = hparams.val_datapath
@@ -24,7 +28,7 @@ class ProbabilityGRU(pl.LightningModule):
         self.avg_E = IsingDataset(filepath=self.train_datapath, data_key='avg_E').data
 
     def forward(self, x):
-        x, _ = self.gru(x)
+        x, _ = self.rnn(x)
         x = self.linear(x)
 
         return x
