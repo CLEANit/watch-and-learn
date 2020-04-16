@@ -106,3 +106,18 @@ class ProbabilityRNN(pl.LightningModule):
         H = (-1/torch.tensor(self.beta))*(torch.log(prob))
 
         return H
+
+
+class ProbabilityAttentionRNN(ProbabilityRNN):
+
+    def __init__(self, hparams):
+        super(ProbabilityAttentionRNN, self).__init__(hparams)
+
+        self.attention = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
+
+    def forward(self, x):
+        x, _ = self.rnn(x)
+        x, attn_weights = self.attention(x, x, x) 
+        x = self.linear(x)
+
+        return x       
