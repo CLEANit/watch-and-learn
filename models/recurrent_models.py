@@ -11,6 +11,7 @@ class ProbabilityRNN(pl.LightningModule):
 
     def __init__(self, hparams):
         super(ProbabilityRNN, self).__init__()
+        self.hparams = hparams
         if hparams.lstm:
             self.rnn = nn.LSTM(hparams.input_size, hparams.hidden_size,
                               num_layers=hparams.num_layers, batch_first=True)
