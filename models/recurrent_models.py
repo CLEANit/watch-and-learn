@@ -81,13 +81,13 @@ class ProbabilityRNN(pl.LightningModule):
 
         ising_dataset = IsingDataset(filepath=self.val_datapath, data_key='ising_grids')
 
-        return DataLoader(ising_dataset, batch_size=self.batch_size)
+        return DataLoader(ising_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def test_dataloader(self):
 
         ising_dataset = IsingDataset(filepath=self.test_datapath, data_key='ising_grids')
 
-        return DataLoader(ising_dataset, batch_size=self.batch_size)
+        return DataLoader(ising_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def calculate_probability(self, x, y):
 
@@ -118,7 +118,9 @@ class ProbabilityAttentionRNN(ProbabilityRNN):
 
     def forward(self, x):
         x, _ = self.rnn(x)
+        x = x.permute(1, 0, 2)
         x, attn_weights = self.attention(x, x, x) 
+        x = x.permute(1, 0, 2)
         x = self.linear(x)
 
-        return x       
+        return x      
