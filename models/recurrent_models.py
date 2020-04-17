@@ -36,18 +36,18 @@ class ProbabilityRNN(pl.LightningModule):
 
     def training_step(self, batch, batch_nb):
         x, y = batch
-        y_hat = self(x)
+        logits = self(x)
         loss_fn = nn.BCEWithLogitsLoss()
-        loss = loss_fn(y_hat, y)
+        loss = loss_fn(logits, y)
         self.logger.experiment.add_scalar('train_loss', loss, self.trainer.global_step)
         return {'loss': loss}
 
     def validation_step(self, batch, batch_nb):
         # TODO: Implement metric for energy
         x, y = batch
-        y_hat = self(x)
+        logits = self(x)
         loss_fn = nn.BCEWithLogitsLoss()
-        loss = loss_fn(y_hat, y)
+        loss = loss_fn(logits, y)
         return {'val_loss': loss}
 
     def validation_epoch_end(self, outputs):
@@ -58,9 +58,9 @@ class ProbabilityRNN(pl.LightningModule):
 
     def test_step(self, batch, batch_nb):
         x, y = batch
-        y_hat = self(x)
+        logits = self(x)
         loss_fn = nn.BCEWithLogitsLoss()
-        return {'test_loss': loss_fn(y_hat, y)}
+        return {'test_loss': loss_fn(logits, y)}
 
     def test_epoch_end(self, outputs):
         avg_loss = torch.stack([x['test_loss'] for x in outputs]).mean()
@@ -123,4 +123,35 @@ class ProbabilityAttentionRNN(ProbabilityRNN):
         x = x.permute(1, 0, 2)
         x = self.linear(x)
 
-        return x      
+        return x, attn_weights
+
+    def training_step(self, batch, batch_nb):
+        x, y = batch
+        logits, _ = self(x)
+        loss_fn = nn.BCEWithLogitsLoss()
+        loss = loss_fn(logits, y)
+        self.logger.experiment.add_scalar('train_loss', loss, self.trainer.global_step)
+        return {'loss': loss}
+
+    def validation_step(self, batch, batch_nb):
+        # TODO: Implement metric for energy
+        x, y = batch
+        logits, _ = self(x)
+        loss_fn = nn.BCEWithLogitsLoss()
+        loss = loss_fn(logits, y)
+        return {'val_loss': loss}
+
+    def test_step(self, batch, batch_nb):
+        x, y = batch
+        logits, _ = self(x)
+        loss_fn = nn.BCEWithLogitsLoss()
+        return {'test_loss': loss_fn(logits, y)}
+
+    def predict_energy(self, x):
+
+        logits, _ = self(x)
+        y_hat = torch.sigmoid(logits)
+        prob = self.calculate_probability(x, y_hat)
+        H = (-1/torch.tensor(self.beta))*(torch.log(prob))
+
+        return H   
