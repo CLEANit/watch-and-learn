@@ -115,8 +115,9 @@ class ProbabilityRNN(pl.LightningModule):
         true_probs = torch.zeros_like(y)
         true_probs += (y*up_state_mask)
         true_probs += (down_state_mask.int() - y*down_state_mask)
+        probs = torch.prod(true_probs, axis=1)
 
-        return torch.prod(true_probs, axis=1)
+        return torch.clamp(probs, 1e-40)
 
     def predict_energy(self, x):
 
