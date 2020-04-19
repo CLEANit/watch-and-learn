@@ -4,7 +4,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 
-from data_utils.pytorch_datasets import IsingDataset
+from data_utils.pytorch_datasets import ProbabilityDataset
 
 
 class ProbabilityRNN(pl.LightningModule):
@@ -25,8 +25,8 @@ class ProbabilityRNN(pl.LightningModule):
         self.lr = hparams.lr
         self.batch_size = hparams.batch_size
         self.num_workers = hparams.num_workers
-        self.beta = IsingDataset(filepath=self.train_datapath, data_key='beta').data
-        self.avg_E = IsingDataset(filepath=self.train_datapath, data_key='avg_E').data
+        self.beta = ProbabilityDataset(filepath=self.train_datapath, data_key='beta').data
+        self.avg_E = ProbabilityDataset(filepath=self.train_datapath, data_key='avg_E').data
 
     def forward(self, x):
         x, _ = self.rnn(x)
@@ -43,7 +43,6 @@ class ProbabilityRNN(pl.LightningModule):
         return {'loss': loss}
 
     def validation_step(self, batch, batch_nb):
-        # TODO: Implement metric for energy
         x, y = batch
         logits = self(x)
         loss_fn = nn.BCEWithLogitsLoss()
@@ -51,7 +50,6 @@ class ProbabilityRNN(pl.LightningModule):
         return {'val_loss': loss}
 
     def validation_epoch_end(self, outputs):
-        # TODO: Implement logger for energy difference
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         self.logger.experiment.add_scalar('val_loss', avg_loss, self.trainer.global_step)
         return {'avg_val_loss': avg_loss}
@@ -72,20 +70,20 @@ class ProbabilityRNN(pl.LightningModule):
 
     def train_dataloader(self):
 
-        ising_dataset = IsingDataset(filepath=self.train_datapath, data_key='ising_grids')
+        ising_dataset = ProbabilityDataset(filepath=self.train_datapath, data_key='ising_grids')
 
         return DataLoader(ising_dataset, batch_size=self.batch_size,
                           num_workers=self.num_workers, shuffle=True)
 
     def val_dataloader(self):
 
-        ising_dataset = IsingDataset(filepath=self.val_datapath, data_key='ising_grids')
+        ising_dataset = ProbabilityDataset(filepath=self.val_datapath, data_key='ising_grids')
 
         return DataLoader(ising_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
 
     def test_dataloader(self):
 
-        ising_dataset = IsingDataset(filepath=self.test_datapath, data_key='ising_grids')
+        ising_dataset = ProbabilityDataset(filepath=self.test_datapath, data_key='ising_grids')
 
         return DataLoader(ising_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
 

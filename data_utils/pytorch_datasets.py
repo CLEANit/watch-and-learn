@@ -4,7 +4,7 @@ import numpy as np
 from torch.utils.data import Dataset
 
 
-class IsingDataset(Dataset):
+class ProbabilityDataset(Dataset):
     """
         Class to load dataset from hdf5 file into PyTorch's Dataset class
     """
@@ -54,3 +54,22 @@ class IsingDataset(Dataset):
             snake_ += list(row[::k])
             k *= -1
         return torch.tensor(snake_).unsqueeze(-1)
+
+
+
+class EnergyDataset(ProbabilityDataset):
+
+    def __init__(self, filepath, grids_data_key, energy_data_key):
+        super(EnergyDataset, self).__init__(filepath, grids_data_key)
+
+        self.energy_data = self.get_data(filepath, energy_data_key)
+
+    def __getitem__(self, index):
+        
+        sample = self.data[index]
+        flattened_sample = self.flatten(sample)
+
+        X = flattened_sample[:-1]
+        y = self.energy_data[index]
+
+        return X, y
