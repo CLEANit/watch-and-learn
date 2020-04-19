@@ -56,20 +56,19 @@ class ProbabilityDataset(Dataset):
         return torch.tensor(snake_).unsqueeze(-1)
 
 
-
 class EnergyDataset(ProbabilityDataset):
 
-    def __init__(self, filepath, grids_data_key, energy_data_key):
+    def __init__(self, filepath, grids_data_key='ising_grids', energy_data_key='true_energies'):
         super(EnergyDataset, self).__init__(filepath, grids_data_key)
 
-        self.energy_data = self.get_data(filepath, energy_data_key)
+        self.energy_data = torch.tensor(self.get_data(filepath, energy_data_key))
 
     def __getitem__(self, index):
-        
+
         sample = self.data[index]
         flattened_sample = self.flatten(sample)
 
         X = flattened_sample[:-1]
-        y = self.energy_data[index]
+        y = self.energy_data[index].unsqueeze(-1)
 
         return X, y
