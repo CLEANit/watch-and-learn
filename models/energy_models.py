@@ -40,7 +40,7 @@ class EnergyRNN(pl.LightningModule):
     def training_step(self, batch, batch_nb):
         x, y = batch
         logits = self(x)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.L1Loss()
         loss = loss_fn(logits, y)
         self.logger.experiment.add_scalar('train_loss', loss, self.trainer.global_step)
         return {'loss': loss}
@@ -48,7 +48,7 @@ class EnergyRNN(pl.LightningModule):
     def validation_step(self, batch, batch_nb, dataloader_nb):
         x, y = batch
         logits = self(x)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.L1Loss()
         loss = loss_fn(logits, y)
         return {'val_loss': loss}
 
@@ -68,7 +68,7 @@ class EnergyRNN(pl.LightningModule):
     def test_step(self, batch, batch_nb):
         x, y = batch
         logits = self(x)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.L1Loss()
         return {'test_loss': loss_fn(logits, y)}
 
     def test_epoch_end(self, outputs):
@@ -149,7 +149,7 @@ class EnergyAttentionRNN(EnergyRNN):
     def training_step(self, batch, batch_nb):
         x, y = batch
         logits, _ = self(x)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.L1Loss()
         loss = loss_fn(logits, y)
         self.logger.experiment.add_scalar('train_loss', loss, self.trainer.global_step)
         return {'loss': loss}
@@ -157,12 +157,12 @@ class EnergyAttentionRNN(EnergyRNN):
     def validation_step(self, batch, batch_nb, dataloader_nb):
         x, y = batch
         logits, _ = self(x)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.L1Loss()
         loss = loss_fn(logits, y)
         return {'val_loss': loss}
 
     def test_step(self, batch, batch_nb):
         x, y = batch
         logits, _ = self(x)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.L1Loss()
         return {'test_loss': loss_fn(logits, y)}
