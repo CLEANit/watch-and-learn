@@ -33,6 +33,7 @@ class EnergyRNN(pl.LightningModule):
         x_inp = x
         x, _ = self.rnn(x_inp)
         x = self.linear(x)
+        x = torch.sigmoid(x)
         x = self.calculate_energy(x_inp, x)
 
         return x
@@ -142,6 +143,7 @@ class EnergyAttentionRNN(EnergyRNN):
         x, attn_weights = self.attention(x, x, x)
         x = x.permute(1, 0, 2)
         x = self.linear(x)
+        x = torch.sigmoid(x)
         x = self.calculate_energy(x_inp, x)
 
         return x, attn_weights
