@@ -18,7 +18,7 @@ class ProbabilityDataset(Dataset):
 
     def __getitem__(self, index):
         sample = self.data[index]
-        flattened_sample = self.flatten(sample)
+        flattened_sample = self.flatten_rows(sample)
 
         X = flattened_sample[:-1]
         y = (flattened_sample[1:] == 1).float()
@@ -42,16 +42,29 @@ class ProbabilityDataset(Dataset):
 
         return data
 
-    def flatten(self, arr: np.array) -> torch.Tensor:
-        """Flattens 2D array using snake pattern
+    def flatten_rows(self, arr: np.array) -> torch.Tensor:
+        """Flattens 2D array using snake pattern through rows
 
         :param arr: 2D array
         :return: flattened array
         """
         snake_ = []
         k = 1
-        for i, row in enumerate(arr):
+        for row in arr:
             snake_ += list(row[::k])
+            k *= -1
+        return torch.tensor(snake_).unsqueeze(-1)
+
+    def flatten_cols(self, arr: np.array) -> torch.Tensor:
+        """Flattens 2D array using snake pattern through columns
+
+        :param arr: 2D array
+        :return: flattened array
+        """
+        snake_ = []
+        k = 1
+        for i in range(arr.shape[1]):
+            snake_ += list(arr[:, i][::k])
             k *= -1
         return torch.tensor(snake_).unsqueeze(-1)
 
@@ -66,9 +79,22 @@ class EnergyDataset(ProbabilityDataset):
     def __getitem__(self, index):
 
         sample = self.data[index]
-        flattened_sample = self.flatten(sample)
+        flattened_sample = self.flatten_rows(sample)
 
         X = flattened_sample[:-1]
         y = self.energy_data[index].unsqueeze(-1)
 
         return X, y
+
+
+class EnergyDataset2D(EnergyDataset):
+
+    def __getitem__(self, index):
+
+        sample = self.data[index]
+
+        X_rows = self.flatten_rows(sample)[:-1]
+        X_cols = self.flatten_cols(sample)[:-1]
+        y = self.energy_data[index].unsqueeze(-1)
+
+        return X_rows, X_cols, y

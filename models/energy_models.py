@@ -4,7 +4,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 
-from data_utils.pytorch_datasets import EnergyDataset, ProbabilityDataset
+from data_utils.pytorch_datasets import EnergyDataset, EnergyDataset2D, ProbabilityDataset
 
 
 class EnergyRNN(pl.LightningModule):
@@ -124,7 +124,7 @@ class EnergyRNN(pl.LightningModule):
     def calculate_energy(self, x_inp, x):
 
         prob = self.calculate_probability(x_inp, x)
-        H = (-1/torch.tensor(self.beta))*(torch.log(prob))
+        H = (1/torch.tensor(self.beta))*(torch.log(prob))
 
         return H
 
@@ -168,3 +168,89 @@ class EnergyAttentionRNN(EnergyRNN):
         logits, _ = self(x)
         loss_fn = nn.L1Loss()
         return {'test_loss': loss_fn(logits, y)}
+
+
+class EnergyAttentionRNN2D(EnergyAttentionRNN):
+
+    def __init__(self, hparams):
+        super(EnergyAttentionRNN, self).__init__(hparams)
+
+        self.attention_rows = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
+        self.attention_cols = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
+        self.linear = nn.Linear(hparams.hidden_size, hparams.output_size)
+
+    def forward(self, x_rows_in, x_cols_in):
+
+        x_rows, _ = self.rnn(x_rows_in)
+        x_cols, _ = self.rnn(x_cols_in)
+        x_rows = x_rows.permute(1, 0, 2)
+        x_cols = x_cols.permute(1, 0, 2)
+
+        x_rows, attn_rows = self.attention_rows(x_rows, x_rows, x_rows)
+        x_cols, attn_cols = self.attention_cols(x_cols, x_cols, x_cols)
+
+        x_rows = x_rows.permute(1, 0, 2)
+        x_cols = x_cols.permute(1, 0, 2)
+
+        x_rows = self.linear(x_rows)
+        x_cols = self.linear(x_cols)
+
+        x_rows = torch.sigmoid(x_rows)
+        x_cols = torch.sigmoid(x_cols)
+
+        x_rows = self.calculate_energy(x_rows_in, x_rows)
+        x_cols = self.calculate_energy(x_cols_in, x_cols)
+
+        x = (x_rows + x_cols)/2
+
+        return x, (attn_rows, attn_cols)
+
+    def training_step(self, batch, batch_nb):
+        x_rows, x_cols, y = batch
+        logits, _ = self(x_rows, x_cols)
+        loss_fn = nn.L1Loss()
+        loss = loss_fn(logits, y)
+        self.logger.experiment.add_scalar('train_loss', loss, self.trainer.global_step)
+        return {'loss': loss}
+
+    def validation_step(self, batch, batch_nb, dataloader_nb):
+        x_rows, x_cols, y = batch
+        logits, _ = self(x_rows, x_cols)
+        loss_fn = nn.L1Loss()
+        loss = loss_fn(logits, y)
+        return {'val_loss': loss}
+
+    def test_step(self, batch, batch_nb):
+        x_rows, x_cols, y = batch
+        logits, _ = self(x_rows, x_cols)
+        loss_fn = nn.L1Loss()
+        return {'test_loss': loss_fn(logits, y)}
+
+    def train_dataloader(self):
+
+        train_dataset = EnergyDataset2D(filepath=self.train_datapath)
+
+        return DataLoader(train_dataset, batch_size=self.batch_size,
+                          num_workers=self.num_workers, shuffle=True)
+
+    def val_dataloader(self):
+
+        main_dataset = EnergyDataset2D(filepath=self.main_val_datapath)
+        main_dataloader = DataLoader(main_dataset, batch_size=self.batch_size,
+                                     num_workers=self.num_workers)
+
+        second_dataset = EnergyDataset2D(filepath=self.val_2_datapath,)
+        second_dataloader = DataLoader(second_dataset, batch_size=self.batch_size,
+                                       num_workers=self.num_workers)
+
+        third_dataset = EnergyDataset2D(filepath=self.val_3_datapath)
+        third_dataloader = DataLoader(third_dataset, batch_size=self.batch_size,
+                                      num_workers=self.num_workers)
+
+        return [main_dataloader, second_dataloader, third_dataloader]
+
+    def test_dataloader(self):
+
+        ising_dataset = EnergyDataset2D(filepath=self.test_datapath, data_key='ising_grids')
+
+        return DataLoader(ising_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
