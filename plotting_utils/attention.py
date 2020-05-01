@@ -66,3 +66,17 @@ def attention_2D_viz(attn_weights, i, j, n_x=8, n_y=8):
     matrix_cols = flat_to_matrix(complete_cols, "columns", n_x, n_y)
 
     return matrix_rows + matrix_cols
+
+
+def attention_1D_viz(attn_weights, i, j, n_x=8, n_y=8):
+
+    # -1 due to missing first element in sequence
+    rows_idx = matrix_to_flat_idx(i, j, "rows", n_x, n_y) - 1
+
+    batch_sum_rows = torch.sum(attn_weights[:, rows_idx, :], axis=0).detach().numpy()
+
+    complete_rows = np.pad(batch_sum_rows, (1, 0), constant_values=5)
+
+    matrix_rows = flat_to_matrix(complete_rows, "rows", n_x, n_y)
+
+    return matrix_rows
