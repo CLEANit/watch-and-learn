@@ -28,18 +28,31 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "-T",
-    "--temperature",
+    "--beta",
     type=float,
-    help="Temperature of the system",
-    default=4.0
+    help="inverse of temperature times Boltzmann constant",
+    default=0.25
 )
 
 parser.add_argument(
-    "--kb",
+    "--n_beta_samples",
+    type=int,
+    help="number of beta values to generate data",
+    default=None
+)
+
+parser.add_argument(
+    "--beta_min",
     type=float,
-    help="Value for Boltzmann's constant",
-    default=1.0
+    help="minimum beta value to sample",
+    default=None
+)
+
+parser.add_argument(
+    "--beta_max",
+    type=float,
+    help="maximum beta value to sample",
+    default=None
 )
 
 parser.add_argument(
@@ -161,12 +174,10 @@ def metropolis_chain(grid_curr: np.DeviceArray, beta: float,
 
     key = random.PRNGKey(random_seed)
 
-    print(f"\nGenerating {burn_in} burn-in samples")
     for i in tqdm(range(burn_in)):
         key, *i_subkeys = random.split(key, num=4)
         grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C, *i_subkeys)
 
-    print(f"\nGenerating {n_iter} MC samples")
     for i in tqdm(range(n_iter)):
         key, *i_subkeys = random.split(key, num=4)
         grid_curr, H_curr = metropolis(grid_curr, H_curr, H, C, *i_subkeys)
@@ -175,8 +186,8 @@ def metropolis_chain(grid_curr: np.DeviceArray, beta: float,
     return grids
 
 
-def h5gen(beta: float, n_x: int, n_y: int, model: str,
-          n_samples: int, burn_in: int, filename: str, random_seed: int) -> None:
+def single_beta_file(beta: float, n_x: int, n_y: int, model: str,
+                     n_samples: int, burn_in: int, filename: str, random_seed: int) -> None:
     """Generate hdf5 file with generated samples
 
     :param beta: inverse of Boltzmann's constant times the temperature
@@ -210,12 +221,68 @@ def h5gen(beta: float, n_x: int, n_y: int, model: str,
     sys.stdout.flush()
 
 
+def multiple_betas_file(beta_min: float, beta_max: float, n_beta_samples: int,
+                        n_x: int, n_y: int, model: str, n_samples: int,
+                        burn_in: int, filename: str, random_seed: int) -> None:
+    """Generate hdf5 file for chains with multiple beta values
+
+    :param beta_min: minimum inverse of Boltzmann's constant times the temperature
+    :param beta_max: maximum inverse of Boltzmann's constant times the temperature
+    :param n_x: grid's first dimension size
+    :param n_y: grid's second dimension size
+    :param model: type of model to simulate
+    :param n_samples: number of samples to generate
+    :param burn_in: number of samples to discard in the begining of MC process
+    :param filename: path and filename to write generated samples
+    """
+
+    if model == "ISING1":
+        H = hamiltonians.H_ising_1
+    elif model == "ISING2":
+        H = hamiltonians.H_ising_2
+
+    beta_values = np.linspace(beta_min, beta_max, n_beta_samples)
+    grids_list = []
+    energies_list = []
+    betas_list = []
+
+    for beta in tqdm(beta_values):
+
+        grid_init = jit(create_grid, static_argnums=(0, 1))(n_x, n_y, random_seed)
+        grids = metropolis_chain(grid_init, beta, H, n_iter=n_samples,
+                                 burn_in=burn_in, random_seed=random_seed)
+
+        grids_list.append(grids)
+
+        energies = vmap(H)(grids)
+        energies_list.append(energies)
+        betas_list.append(np.array([beta]*len(energies)))
+
+    total_grids = np.concatenate(grids_list)
+    total_energies = np.concatenate(energies_list)
+    total_betas = np.concatenate(betas_list)
+
+    with h5py.File(filename, "w") as f:
+        f.create_dataset("ising_grids", data=total_grids, chunks=True)
+        f.create_dataset("true_energies", data=total_energies, chunks=True)
+        f.create_dataset("beta", data=total_betas)
+    sys.stdout.flush()
+
+
 if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    beta = 1/(args.temperature*args.kb)
+    if args.n_beta_samples is not None:
+        multiple_betas_file(
+            beta_min=args.beta_min, beta_max=args.beta_max, n_beta_samples=args.n_beta_samples,
+            n_x=args.n_x, n_y=args.n_y, model=args.model, n_samples=args.n_samples,
+            burn_in=args.burn_in, filename=args.filename, random_seed=args.random_seed
+        )
 
-    h5gen(beta=beta, n_x=args.n_x, n_y=args.n_y, model=args.model,
-          n_samples=args.n_samples, burn_in=args.burn_in,
-          filename=args.filename, random_seed=args.random_seed)
+    else:
+        single_beta_file(
+            beta=args.beta, n_x=args.n_x, n_y=args.n_y, model=args.model,
+            n_samples=args.n_samples, burn_in=args.burn_in,
+            filename=args.filename, random_seed=args.random_seed
+        )
