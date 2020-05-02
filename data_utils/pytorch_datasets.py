@@ -20,7 +20,7 @@ class ProbabilityDataset(Dataset):
         sample = self.data[index]
         flattened_sample = self.flatten_rows(sample)
 
-        X = flattened_sample[:-1]
+        X = flattened_sample[:-1].float()
         y = (flattened_sample[1:] == 1).float()
 
         return X, y
@@ -81,8 +81,8 @@ class EnergyDataset(ProbabilityDataset):
         sample = self.data[index]
         flattened_sample = self.flatten_rows(sample)
 
-        X = flattened_sample[:-1]
-        y = self.energy_data[index].unsqueeze(-1)
+        X = flattened_sample[:-1].float()
+        y = self.energy_data[index].unsqueeze(-1).float()
 
         return X, y
 
@@ -93,8 +93,27 @@ class EnergyDataset2D(EnergyDataset):
 
         sample = self.data[index]
 
-        X_rows = self.flatten_rows(sample)[:-1]
-        X_cols = self.flatten_cols(sample)[:-1]
-        y = self.energy_data[index].unsqueeze(-1)
+        X_rows = self.flatten_rows(sample)[:-1].float()
+        X_cols = self.flatten_cols(sample)[:-1].float()
+        y = self.energy_data[index].unsqueeze(-1).float()
+
+        return X_rows, X_cols, y
+
+
+class ProbabilityDataset2D(ProbabilityDataset):
+
+    def __getitem__(self, index):
+
+        sample = self.data[index]
+
+        flattened_rows = self.flatten_rows(sample)
+        flattened_cols = self.flatten_cols(sample)
+
+        X_rows = flattened_rows[:-1].float()
+        X_cols = flattened_cols[:-1].float()
+
+        y_rows = (flattened_rows[1:] == 1).float()
+        y_cols = (flattened_cols[1:] == 1).float()
+        y = torch.stack([y_rows, y_cols])
 
         return X_rows, X_cols, y

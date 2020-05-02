@@ -4,7 +4,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 
-from data_utils.pytorch_datasets import ProbabilityDataset
+from data_utils.pytorch_datasets import ProbabilityDataset, ProbabilityDataset2D
 
 
 class ProbabilityRNN(pl.LightningModule):
@@ -14,11 +14,18 @@ class ProbabilityRNN(pl.LightningModule):
         self.hparams = hparams
         if hparams.lstm:
             self.rnn = nn.LSTM(hparams.input_size, hparams.hidden_size,
-                               num_layers=hparams.num_layers, batch_first=True)
+                               num_layers=hparams.num_layers,
+                               bidirectional=hparams.bidirectional,
+                               batch_first=True)
         else:
             self.rnn = nn.GRU(hparams.input_size, hparams.hidden_size,
-                              num_layers=hparams.num_layers, batch_first=True)
-        self.linear = nn.Linear(hparams.hidden_size, hparams.output_size)
+                              num_layers=hparams.num_layers,
+                              bidirectional=hparams.bidirectional,
+                              batch_first=True)
+        if hparams.bidirectional:
+            self.linear = nn.Linear(2*hparams.hidden_size, hparams.output_size)
+        else:
+            self.linear = nn.Linear(hparams.hidden_size, hparams.output_size)
         self.train_datapath = hparams.train_datapath
         self.main_val_datapath = hparams.main_val_datapath
         self.val_2_datapath = hparams.val_2_datapath
@@ -133,7 +140,11 @@ class ProbabilityAttentionRNN(ProbabilityRNN):
     def __init__(self, hparams):
         super(ProbabilityAttentionRNN, self).__init__(hparams)
 
-        self.attention = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
+        if hparams.bidirectional:
+            self.attention = nn.MultiheadAttention(2*hparams.hidden_size, hparams.n_heads)
+
+        else:
+            self.attention = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
 
     def forward(self, x):
         x, _ = self.rnn(x)
@@ -162,6 +173,165 @@ class ProbabilityAttentionRNN(ProbabilityRNN):
     def test_step(self, batch, batch_nb):
         x, y = batch
         logits, _ = self(x)
+        loss_fn = nn.BCEWithLogitsLoss()
+        return {'test_loss': loss_fn(logits, y)}
+
+    def predict_energy(self, x):
+
+        logits, _ = self(x)
+        y_hat = torch.sigmoid(logits)
+        prob = self.calculate_probability(x, y_hat)
+        H = (-1/torch.tensor(self.beta))*(torch.log(prob))
+
+        return H
+
+
+class ProbabilityRNN2D(ProbabilityRNN):
+
+    def __init__(self, hparams):
+        super(ProbabilityRNN2D, self).__init__(hparams)
+
+        self.__dict__.pop('rnn', None)
+        self.__dict__.pop('linear', None)
+
+        if hparams.lstm:
+            self.rnn_rows = nn.LSTM(hparams.input_size, hparams.hidden_size,
+                                    num_layers=hparams.num_layers,
+                                    bidirectional=hparams.bidirectional,
+                                    batch_first=True)
+            self.rnn_cols = nn.LSTM(hparams.input_size, hparams.hidden_size,
+                                    num_layers=hparams.num_layers,
+                                    bidirectional=hparams.bidirectional,
+                                    batch_first=True)
+        else:
+            self.rnn_rows = nn.GRU(hparams.input_size, hparams.hidden_size,
+                                   num_layers=hparams.num_layers,
+                                   bidirectional=hparams.bidirectional,
+                                   batch_first=True)
+            self.rnn_cols = nn.GRU(hparams.input_size, hparams.hidden_size,
+                                   num_layers=hparams.num_layers,
+                                   bidirectional=hparams.bidirectional,
+                                   batch_first=True)
+        if hparams.bidirectional:
+            self.linear_rows = nn.Linear(2*hparams.hidden_size, hparams.output_size)
+            self.linear_cols = nn.Linear(2*hparams.hidden_size, hparams.output_size)
+        else:
+            self.linear_rows = nn.Linear(hparams.hidden_size, hparams.output_size)
+            self.linear_cols = nn.Linear(hparams.hidden_size, hparams.output_size)
+
+    def forward(self, x_rows_in, x_cols_in):
+
+        x_rows, _ = self.rnn_rows(x_rows_in)
+        x_cols, _ = self.rnn_cols(x_cols_in)
+
+        x_rows = self.linear_rows(x_rows)
+        x_cols = self.linear_cols(x_cols)
+
+        x = torch.stack([x_rows, x_cols], dim=1)
+
+        return x
+
+    def training_step(self, batch, batch_nb):
+        x_rows, x_cols, y = batch
+        logits = self(x_rows, x_cols)
+        loss_fn = nn.BCEWithLogitsLoss()
+        loss = loss_fn(logits, y)
+        self.logger.experiment.add_scalar('train_loss', loss, self.trainer.global_step)
+        return {'loss': loss}
+
+    def validation_step(self, batch, batch_nb, dataloader_nb):
+        x_rows, x_cols, y = batch
+        logits = self(x_rows, x_cols)
+        loss_fn = nn.BCEWithLogitsLoss()
+        loss = loss_fn(logits, y)
+        return {'val_loss': loss}
+
+    def test_step(self, batch, batch_nb):
+        x_rows, x_cols, y = batch
+        logits = self(x_rows, x_cols)
+        loss_fn = nn.BCEWithLogitsLoss()
+        return {'test_loss': loss_fn(logits, y)}
+
+    def train_dataloader(self):
+
+        train_dataset = ProbabilityDataset2D(filepath=self.train_datapath, data_key='ising_grids')
+
+        return DataLoader(train_dataset, batch_size=self.batch_size,
+                          num_workers=self.num_workers, shuffle=True)
+
+    def val_dataloader(self):
+
+        main_dataset = ProbabilityDataset2D(filepath=self.main_val_datapath, data_key='ising_grids')
+        main_dataloader = DataLoader(main_dataset, batch_size=self.batch_size,
+                                     num_workers=self.num_workers)
+
+        second_dataset = ProbabilityDataset2D(filepath=self.val_2_datapath, data_key='ising_grids')
+        second_dataloader = DataLoader(second_dataset, batch_size=self.batch_size,
+                                       num_workers=self.num_workers)
+
+        third_dataset = ProbabilityDataset2D(filepath=self.val_3_datapath, data_key='ising_grids')
+        third_dataloader = DataLoader(third_dataset, batch_size=self.batch_size,
+                                      num_workers=self.num_workers)
+
+        return [main_dataloader, second_dataloader, third_dataloader]
+
+    def test_dataloader(self):
+
+        ising_dataset = ProbabilityDataset2D(filepath=self.test_datapath, data_key='ising_grids')
+
+        return DataLoader(ising_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
+
+
+class ProbabilityAttentionRNN2D(ProbabilityRNN2D):
+
+    def __init__(self, hparams):
+        super(ProbabilityAttentionRNN2D, self).__init__(hparams)
+
+        if hparams.bidirectional:
+            self.attention_rows = nn.MultiheadAttention(2*hparams.hidden_size, hparams.n_heads)
+            self.attention_cols = nn.MultiheadAttention(2*hparams.hidden_size, hparams.n_heads)
+        else:
+            self.attention_rows = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
+            self.attention_cols = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
+
+    def forward(self, x_rows_in, x_cols_in):
+
+        x_rows, _ = self.rnn_rows(x_rows_in)
+        x_cols, _ = self.rnn_cols(x_cols_in)
+        x_rows = x_rows.permute(1, 0, 2)
+        x_cols = x_cols.permute(1, 0, 2)
+
+        x_rows, attn_rows = self.attention_rows(x_rows, x_rows, x_rows)
+        x_cols, attn_cols = self.attention_cols(x_cols, x_cols, x_cols)
+
+        x_rows = x_rows.permute(1, 0, 2)
+        x_cols = x_cols.permute(1, 0, 2)
+
+        x_rows = self.linear_rows(x_rows)
+        x_cols = self.linear_cols(x_cols)
+
+        x = torch.stack([x_rows, x_cols], dim=1)
+
+        return x, (attn_rows, attn_cols)
+
+    def training_step(self, batch, batch_nb):
+        x_rows, x_cols, y = batch
+        logits, _ = self(x_rows, x_cols)
+        loss_fn = nn.BCEWithLogitsLoss()
+        loss = loss_fn(logits, y)
+        self.logger.experiment.add_scalar('train_loss', loss, self.trainer.global_step)
+        return {'loss': loss}
+
+    def validation_step(self, batch, batch_nb, dataloader_nb):
+        x_rows, x_cols, y = batch
+        logits, _ = self(x_rows, x_cols)
+        loss_fn = nn.BCEWithLogitsLoss()
+        loss = loss_fn(logits, y)
+        return {'val_loss': loss}
+
+    def test_step(self, batch, batch_nb):
+        x_rows, x_cols, y = batch
+        logits, _ = self(x_rows, x_cols)
         loss_fn = nn.BCEWithLogitsLoss()
         return {'test_loss': loss_fn(logits, y)}
 
