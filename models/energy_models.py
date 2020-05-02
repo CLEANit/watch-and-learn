@@ -14,11 +14,18 @@ class EnergyRNN(pl.LightningModule):
         self.hparams = hparams
         if hparams.lstm:
             self.rnn = nn.LSTM(hparams.input_size, hparams.hidden_size,
-                               num_layers=hparams.num_layers, batch_first=True)
+                               num_layers=hparams.num_layers,
+                               bidirectional=hparams.bidirectional,
+                               batch_first=True)
         else:
             self.rnn = nn.GRU(hparams.input_size, hparams.hidden_size,
-                              num_layers=hparams.num_layers, batch_first=True)
-        self.linear = nn.Linear(hparams.hidden_size, hparams.output_size)
+                              num_layers=hparams.num_layers,
+                              bidirectional=hparams.bidirectional,
+                              batch_first=True)
+        if hparams.bidirectional:
+            self.linear = nn.Linear(2*hparams.hidden_size, hparams.output_size)
+        else:
+            self.linear = nn.Linear(hparams.hidden_size, hparams.output_size)
         self.train_datapath = hparams.train_datapath
         self.main_val_datapath = hparams.main_val_datapath
         self.val_2_datapath = hparams.val_2_datapath
@@ -27,7 +34,13 @@ class EnergyRNN(pl.LightningModule):
         self.lr = hparams.lr
         self.batch_size = hparams.batch_size
         self.num_workers = hparams.num_workers
-        self.beta = ProbabilityDataset(filepath=self.train_datapath, data_key='beta').data
+        self.beta = torch.tensor(
+            ProbabilityDataset(
+                filepath=self.train_datapath,
+                data_key='beta').data
+        )
+        if torch.cuda.is_available():
+            self.beta = self.beta.to('cuda:0')
 
     def forward(self, x):
         x_inp = x
@@ -134,7 +147,10 @@ class EnergyAttentionRNN(EnergyRNN):
     def __init__(self, hparams):
         super(EnergyAttentionRNN, self).__init__(hparams)
 
-        self.attention = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
+        if hparams.bidirectional:
+            self.attention = nn.MultiheadAttention(2*hparams.hidden_size, hparams.n_heads)
+        else:
+            self.attention = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
 
     def forward(self, x):
         x_inp = x
@@ -170,19 +186,121 @@ class EnergyAttentionRNN(EnergyRNN):
         return {'test_loss': loss_fn(logits, y)}
 
 
-class EnergyAttentionRNN2D(EnergyAttentionRNN):
+class EnergyRNN2D(EnergyRNN):
 
     def __init__(self, hparams):
-        super(EnergyAttentionRNN, self).__init__(hparams)
+        super(EnergyRNN2D, self).__init__(hparams)
 
-        self.attention_rows = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
-        self.attention_cols = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
-        self.linear = nn.Linear(hparams.hidden_size, hparams.output_size)
+        if hparams.lstm:
+            self.rnn_rows = nn.LSTM(hparams.input_size, hparams.hidden_size,
+                                    num_layers=hparams.num_layers,
+                                    bidirectional=hparams.bidirectional,
+                                    batch_first=True)
+            self.rnn_cols = nn.LSTM(hparams.input_size, hparams.hidden_size,
+                                    num_layers=hparams.num_layers,
+                                    bidirectional=hparams.bidirectional,
+                                    batch_first=True)
+        else:
+            self.rnn_rows = nn.GRU(hparams.input_size, hparams.hidden_size,
+                                   num_layers=hparams.num_layers,
+                                   bidirectional=hparams.bidirectional,
+                                   batch_first=True)
+            self.rnn_cols = nn.GRU(hparams.input_size, hparams.hidden_size,
+                                   num_layers=hparams.num_layers,
+                                   bidirectional=hparams.bidirectional,
+                                   batch_first=True)
+        if hparams.bidirectional:
+            self.linear_rows = nn.Linear(2*hparams.hidden_size, hparams.output_size)
+            self.linear_cols = nn.Linear(2*hparams.hidden_size, hparams.output_size)
+        else:
+            self.linear_rows = nn.Linear(hparams.hidden_size, hparams.output_size)
+            self.linear_cols = nn.Linear(hparams.hidden_size, hparams.output_size)
 
     def forward(self, x_rows_in, x_cols_in):
 
-        x_rows, _ = self.rnn(x_rows_in)
-        x_cols, _ = self.rnn(x_cols_in)
+        x_rows, _ = self.rnn_rows(x_rows_in)
+        x_cols, _ = self.rnn_cols(x_cols_in)
+
+        x_rows = self.linear_rows(x_rows)
+        x_cols = self.linear_cols(x_cols)
+
+        x_rows = torch.sigmoid(x_rows)
+        x_cols = torch.sigmoid(x_cols)
+
+        x_rows = self.calculate_energy(x_rows_in, x_rows)
+        x_cols = self.calculate_energy(x_cols_in, x_cols)
+
+        x = (x_rows + x_cols)/2
+
+        return x
+
+    def training_step(self, batch, batch_nb):
+        x_rows, x_cols, y = batch
+        y_hat = self(x_rows, x_cols)
+        loss_fn = nn.L1Loss()
+        loss = loss_fn(y_hat, y)
+        self.logger.experiment.add_scalar('train_loss', loss, self.trainer.global_step)
+        return {'loss': loss}
+
+    def validation_step(self, batch, batch_nb, dataloader_nb):
+        x_rows, x_cols, y = batch
+        y_hat = self(x_rows, x_cols)
+        loss_fn = nn.L1Loss()
+        loss = loss_fn(y_hat, y)
+        return {'val_loss': loss}
+
+    def test_step(self, batch, batch_nb):
+        x_rows, x_cols, y = batch
+        y_hat = self(x_rows, x_cols)
+        loss_fn = nn.L1Loss()
+        return {'test_loss': loss_fn(y_hat, y)}
+
+    def train_dataloader(self):
+
+        train_dataset = EnergyDataset2D(filepath=self.train_datapath)
+
+        return DataLoader(train_dataset, batch_size=self.batch_size,
+                          num_workers=self.num_workers, shuffle=True)
+
+    def val_dataloader(self):
+
+        main_dataset = EnergyDataset2D(filepath=self.main_val_datapath)
+        main_dataloader = DataLoader(main_dataset, batch_size=self.batch_size,
+                                     num_workers=self.num_workers)
+
+        second_dataset = EnergyDataset2D(filepath=self.val_2_datapath,)
+        second_dataloader = DataLoader(second_dataset, batch_size=self.batch_size,
+                                       num_workers=self.num_workers)
+
+        third_dataset = EnergyDataset2D(filepath=self.val_3_datapath)
+        third_dataloader = DataLoader(third_dataset, batch_size=self.batch_size,
+                                      num_workers=self.num_workers)
+
+        return [main_dataloader, second_dataloader, third_dataloader]
+
+    def test_dataloader(self):
+
+        ising_dataset = EnergyDataset2D(filepath=self.test_datapath, data_key='ising_grids')
+
+        return DataLoader(ising_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
+
+
+class EnergyAttentionRNN2D(EnergyRNN2D):
+
+    def __init__(self, hparams):
+        super(EnergyAttentionRNN2D, self).__init__(hparams)
+
+        if hparams.bidirectional:
+            self.attention_rows = nn.MultiheadAttention(2*hparams.hidden_size, hparams.n_heads)
+            self.attention_cols = nn.MultiheadAttention(2*hparams.hidden_size, hparams.n_heads)
+        else:
+            self.attention_rows = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
+            self.attention_cols = nn.MultiheadAttention(hparams.hidden_size, hparams.n_heads)
+
+    def forward(self, x_rows_in, x_cols_in):
+
+        x_rows, _ = self.rnn_rows(x_rows_in)
+        x_cols, _ = self.rnn_cols(x_cols_in)
         x_rows = x_rows.permute(1, 0, 2)
         x_cols = x_cols.permute(1, 0, 2)
 
@@ -192,8 +310,8 @@ class EnergyAttentionRNN2D(EnergyAttentionRNN):
         x_rows = x_rows.permute(1, 0, 2)
         x_cols = x_cols.permute(1, 0, 2)
 
-        x_rows = self.linear(x_rows)
-        x_cols = self.linear(x_cols)
+        x_rows = self.linear_rows(x_rows)
+        x_cols = self.linear_cols(x_cols)
 
         x_rows = torch.sigmoid(x_rows)
         x_cols = torch.sigmoid(x_cols)
@@ -225,32 +343,3 @@ class EnergyAttentionRNN2D(EnergyAttentionRNN):
         logits, _ = self(x_rows, x_cols)
         loss_fn = nn.L1Loss()
         return {'test_loss': loss_fn(logits, y)}
-
-    def train_dataloader(self):
-
-        train_dataset = EnergyDataset2D(filepath=self.train_datapath)
-
-        return DataLoader(train_dataset, batch_size=self.batch_size,
-                          num_workers=self.num_workers, shuffle=True)
-
-    def val_dataloader(self):
-
-        main_dataset = EnergyDataset2D(filepath=self.main_val_datapath)
-        main_dataloader = DataLoader(main_dataset, batch_size=self.batch_size,
-                                     num_workers=self.num_workers)
-
-        second_dataset = EnergyDataset2D(filepath=self.val_2_datapath,)
-        second_dataloader = DataLoader(second_dataset, batch_size=self.batch_size,
-                                       num_workers=self.num_workers)
-
-        third_dataset = EnergyDataset2D(filepath=self.val_3_datapath)
-        third_dataloader = DataLoader(third_dataset, batch_size=self.batch_size,
-                                      num_workers=self.num_workers)
-
-        return [main_dataloader, second_dataloader, third_dataloader]
-
-    def test_dataloader(self):
-
-        ising_dataset = EnergyDataset2D(filepath=self.test_datapath, data_key='ising_grids')
-
-        return DataLoader(ising_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
