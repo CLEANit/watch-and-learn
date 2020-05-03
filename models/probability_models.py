@@ -281,6 +281,17 @@ class ProbabilityRNN2D(ProbabilityRNN):
 
         return DataLoader(ising_dataset, batch_size=self.batch_size, num_workers=self.num_workers)
 
+    def predict_energy(self, x_rows, x_cols):
+
+        logits = self(x_rows, x_cols)
+        y_hat = torch.sigmoid(logits)
+        prob_rows = self.calculate_probability(x_rows, y_hat[:, 0, :])
+        prob_cols = self.calculate_probability(x_cols, y_hat[:, 1, :])
+        H_rows = (-1/torch.tensor(self.beta))*(torch.log(prob_rows))
+        H_cols = (-1/torch.tensor(self.beta))*(torch.log(prob_cols))
+
+        return (H_rows + H_cols)/2
+
 
 class ProbabilityAttentionRNN2D(ProbabilityRNN2D):
 
@@ -335,11 +346,13 @@ class ProbabilityAttentionRNN2D(ProbabilityRNN2D):
         loss_fn = nn.BCEWithLogitsLoss()
         return {'test_loss': loss_fn(logits, y)}
 
-    def predict_energy(self, x):
+    def predict_energy(self, x_rows, x_cols):
 
-        logits, _ = self(x)
+        logits, _ = self(x_rows, x_cols)
         y_hat = torch.sigmoid(logits)
-        prob = self.calculate_probability(x, y_hat)
-        H = (-1/torch.tensor(self.beta))*(torch.log(prob))
+        prob_rows = self.calculate_probability(x_rows, y_hat[:, 0, :])
+        prob_cols = self.calculate_probability(x_cols, y_hat[:, 1, :])
+        H_rows = (-1/torch.tensor(self.beta))*(torch.log(prob_rows))
+        H_cols = (-1/torch.tensor(self.beta))*(torch.log(prob_cols))
 
-        return H
+        return (H_rows + H_cols)/2
