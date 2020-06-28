@@ -12,6 +12,8 @@ The plot below compares the performance across energy values of the model develo
 
 The table below shows in more detail the effect of the different extensions on the RMSE. You can find the details of the four extensions on the [Models section](#models) and the RMSE scores for all possible combinations on the Model Evaluation notebook.
 
+<center>
+
 |               Model Extensions              | RMSE |
 |:-------------------------------------------:|:----:|
 | Energy GRU + Attention + 2D + Bidirectional | 7.88 |
@@ -20,6 +22,8 @@ The table below shows in more detail the effect of the different extensions on t
 | Energy GRU + 2D                             | 14.2 |
 | Energy GRU                                  | 15.8 |
 | Probability GRU (Original Model)            | 19.9 |
+
+</center>
 
 ## Data Generation Process
 The data generation process is in the `generate_ising.py` script. The idea of rewriting the process from numpy to Jax was to leverage the JIT compilation functionality. JIT compilation allows a speedup of around 6x compared to generating the data using pure numpy. 
