@@ -12,11 +12,11 @@ The extensions I made to the model proposed by Sprague et al. are:
 3. Feed the model data flattened through rows and columns to leverage the 2D structure and make more accessible the state of the four neighbors.
 4. Calculate the loss on the energy instead of the loss on the probability of the sequence's elements.
 
-The plot below compares the performance across energy values of the model developed by Sprague et al. (Original Model) and a model that includes one attention layer and a bidirectional RNN and calculates the loss function directly on the energy prediction (Extended Model). The **RMSE scores** of the extended and original models are **7.88 and 19.8** in the test set. The RMSE scores and the plot show that the extensions are useful to improve energy predictions using language models.
+The plot below compares the performance across energy values of the model developed by Sprague et al. (Original Model) and a model that includes one attention layer and a bidirectional RNN and calculates the loss function directly on the energy prediction (Extended Model). The **RMSE scores** of the extended and original models are **7.79 and 19.9** in the test set. The RMSE scores and the plot show that the extensions are useful to improve energy predictions using language models.
 
 ![predictions_plot](./images/predictions_plot.png)
 
-The table below shows in more detail the effect of the different extensions on the RMSE. You can find the details of the four extensions on the [Models section](#models) and the RMSE scores for all possible combinations on the Model Evaluation notebook.
+The table below shows in more detail the effect of the different extensions on the RMSE calculated on the test set. You can find the details of the four extensions on the [Models section](#models) and the RMSE scores for all possible combinations on the Model Evaluation notebook.
 
 <center>
 
