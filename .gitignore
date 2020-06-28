@@ -134,6 +134,7 @@ dmypy.json
 # Data Files
 data/
 
-# Logs
+# Logs and Weights
 lightning_logs/
 tb_logs
+model_weights/
