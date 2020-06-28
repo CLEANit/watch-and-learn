@@ -137,7 +137,7 @@ class EnergyRNN(pl.LightningModule):
     def calculate_energy(self, x_inp, x):
 
         prob = self.calculate_probability(x_inp, x)
-        H = (1/torch.tensor(self.beta))*(torch.log(prob))
+        H = (1/self.beta)*(torch.log(prob))
 
         return H
 
