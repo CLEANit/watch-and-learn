@@ -49,6 +49,8 @@ I developed all the models using PyTorch using the functionalities available in 
 
 ### Attention Visualization
 
+Plot of attention weights for the (3, 4) position on the grid for different models. the visualization can be generated with the Attention Visualization notebook.
+
 ![attention_plot](./images/attention_plot.png)
 
 ## How to Run
