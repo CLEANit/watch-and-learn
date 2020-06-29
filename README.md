@@ -55,7 +55,7 @@ Plot of attention weights for the (3, 4) position on the grid for different mode
 
 ## How to Run
 
-You can run the data generating process using the command below. The script has several arguments for adjusting the generation process. Please refer to the script for the meaning of each parameter or run the command below with the `--help` flag.
+You can run the data generating process using the command below. The `generate_ising.py` script is in the `data_utils` directory and has several arguments for adjusting the generation process. Please refer to the script for the meaning of each parameter or run the command below with the `--help` flag.
 
 ```
 python generate_ising.py
